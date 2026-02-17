@@ -1,21 +1,14 @@
 services:
   caddy:
-    profiles: ["with-webserver"]
     image: caddy:2.10.0
     container_name: caddy
     restart: unless-stopped
     ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp" # Needed for HTTP/3
+      - "3003:3003"
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile # Mount Caddy config file
-      - caddy_data:/data # Mount persistent data volume for certs etc.
-      - caddy_config:/config # Mount persistent config volume
-    environment:
-      # Pass domain name for use in Caddyfile
-      # Email is configured via Caddyfile global options
-      - DOMAIN_NAME=${DOMAIN_NAME}
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
     depends_on:
       - backend
       - client
@@ -90,6 +83,9 @@ services:
       - DISABLE_SIGNUP=${DISABLE_SIGNUP}
       - DISABLE_TELEMETRY=${DISABLE_TELEMETRY}
       - MAPBOX_TOKEN=${MAPBOX_TOKEN}
+      - IP2LOCATION_BIN_PATH=${IP2LOCATION_BIN_PATH:-/app/IP2LOCATION.BIN}
+    volumes:
+      - ${IP2LOCATION_BIN_FILE:-/dev/null}:/app/IP2LOCATION.BIN
     depends_on:
       clickhouse:
         condition: service_healthy

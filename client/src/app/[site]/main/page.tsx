@@ -40,7 +40,7 @@ function MainPageContent() {
         <Countries />
         <Events />
         <Weekdays />
-        {IS_CLOUD && <Network />}
+        <Network />
         {IS_CLOUD && <SearchConsole />}
       </div>
     </div>

@@ -64,7 +64,8 @@ export const initializeClickhouse = async () => {
     `,
   });
 
-  if (IS_CLOUD) {
+  // Always create ISP/ASN columns (needed for IP2Location enrichment)
+  {
     await clickhouse.exec({
       query: `
         ALTER TABLE events
@@ -72,13 +73,13 @@ export const initializeClickhouse = async () => {
           ADD COLUMN IF NOT EXISTS company_domain String DEFAULT '',
           ADD COLUMN IF NOT EXISTS company_type LowCardinality(String) DEFAULT '',
           ADD COLUMN IF NOT EXISTS company_abuse_score Nullable(Float64),
-  
+
           ADD COLUMN IF NOT EXISTS asn Nullable(UInt32),
           ADD COLUMN IF NOT EXISTS asn_org String DEFAULT '',
           ADD COLUMN IF NOT EXISTS asn_domain String DEFAULT '',
           ADD COLUMN IF NOT EXISTS asn_type LowCardinality(String) DEFAULT '',
           ADD COLUMN IF NOT EXISTS asn_abuse_score Nullable(Float64),
-  
+
           ADD COLUMN IF NOT EXISTS vpn LowCardinality(String) DEFAULT '',
           ADD COLUMN IF NOT EXISTS crawler LowCardinality(String) DEFAULT '',
           ADD COLUMN IF NOT EXISTS datacenter LowCardinality(String) DEFAULT '',
@@ -175,35 +176,35 @@ export const initializeClickhouse = async () => {
         monitor_id UInt32,
         organization_id String,
         timestamp DateTime,
-        
+
         -- Monitor metadata
         monitor_type LowCardinality(String), -- 'http', 'tcp'
         monitor_url String,
         monitor_name String,
         region LowCardinality(String) DEFAULT 'local',
-        
+
         -- Response data
         status LowCardinality(String), -- 'success', 'failure', 'timeout'
         status_code Nullable(UInt16), -- HTTP status code
         response_time_ms UInt32,
-        
+
         -- HTTP timing breakdown (all in milliseconds)
         dns_time_ms Nullable(UInt32),
         tcp_time_ms Nullable(UInt32),
         tls_time_ms Nullable(UInt32),
         ttfb_ms Nullable(UInt32), -- Time to first byte
         transfer_time_ms Nullable(UInt32),
-        
+
         -- Validation results
         validation_errors Array(String), -- Array of failed validation rules
-        
+
         -- Response metadata (for HTTP)
         response_headers Map(String, String),
         response_size_bytes Nullable(UInt32),
-        
+
         -- TCP specific
         port Nullable(UInt16),
-        
+
         -- Error information
         error_message Nullable(String),
         error_type Nullable(String) -- 'dns_failure', 'connection_timeout', 'ssl_error', etc.

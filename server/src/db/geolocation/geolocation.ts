@@ -1,6 +1,7 @@
 import type { City } from "@maxmind/geoip2-node";
 import { Reader } from "@maxmind/geoip2-node";
 import { readFile } from "fs/promises";
+import { existsSync } from "fs";
 import path from "path";
 import { IS_CLOUD } from "../../lib/const.js";
 import { logger } from "../../lib/logger/logger.js";
@@ -23,6 +24,37 @@ async function loadDatabase(dbPath: string) {
 }
 
 await loadDatabase(dbPath);
+
+// IP2Location integration for ISP/Domain/UsageType enrichment
+let ip2location: any = null;
+
+const ip2lBinPath = process.env.IP2LOCATION_BIN_PATH || path.join(process.cwd(), "IP2LOCATION.BIN");
+
+if (existsSync(ip2lBinPath)) {
+  try {
+    const { IP2Location } = await import("ip2location-nodejs");
+    ip2location = new IP2Location();
+    ip2location.open(ip2lBinPath);
+    logger.info(`IP2Location database loaded successfully from ${ip2lBinPath}`);
+  } catch (e) {
+    logger.warn(`Failed to load IP2Location database: ${e}`);
+  }
+} else {
+  logger.info("IP2Location BIN file not found, ISP/ASN enrichment disabled. Set IP2LOCATION_BIN_PATH env var or place IP2LOCATION.BIN in server root.");
+}
+
+// Map IP2Location usageType to Rybbit's asn_type categories
+function mapUsageType(usageType: string): string {
+  if (!usageType || usageType === "?" || usageType === "-") return "";
+  const ut = usageType.toUpperCase();
+  // IP2Location usage types: ISP, COM, ORG, GOV, MIL, EDU, LIB, CDN, DCH, SES, MOB, ISP/MOB, RSV
+  if (ut.includes("ISP") || ut.includes("MOB")) return "isp";
+  if (ut === "DCH" || ut === "CDN" || ut === "SES") return "hosting";
+  if (ut === "COM" || ut === "ORG") return "business";
+  if (ut === "GOV" || ut === "MIL") return "government";
+  if (ut === "EDU" || ut === "LIB") return "education";
+  return ut.toLowerCase();
+}
 
 // Utility function to extract response data
 function extractLocationData(response: City | null): LocationResponse {
@@ -228,7 +260,42 @@ async function getLocationFromLocal(ips: string[]): Promise<Record<string, Locat
   const results: Record<string, LocationResponse> = {};
 
   responses.forEach((response, index) => {
-    results[ips[index]] = extractLocationData(response);
+    const ip = ips[index];
+    const base = extractLocationData(response);
+
+    // Enrich with IP2Location ISP/Domain/UsageType data
+    if (ip2location && base) {
+      try {
+        const ip2lResult = ip2location.getAll(ip);
+
+        const isp = ip2lResult.isp && ip2lResult.isp !== "?" ? ip2lResult.isp : "";
+        const domain = ip2lResult.domain && ip2lResult.domain !== "?" ? ip2lResult.domain : "";
+        const usageType = ip2lResult.usageType && ip2lResult.usageType !== "?" ? ip2lResult.usageType : "";
+        const mappedType = mapUsageType(usageType);
+
+        base.company = {
+          name: isp,
+          domain: domain,
+          type: mappedType,
+        };
+
+        base.asn = {
+          asn: undefined,
+          org: isp,
+          domain: domain,
+          type: mappedType,
+        };
+
+        // Mark datacenter traffic
+        if (usageType.toUpperCase() === "DCH") {
+          base.datacenter = isp || "unknown";
+        }
+      } catch (e) {
+        // IP2Location lookup failed for this IP, skip enrichment
+      }
+    }
+
+    results[ip] = base;
   });
 
   return results;

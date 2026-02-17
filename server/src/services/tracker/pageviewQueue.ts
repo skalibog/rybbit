@@ -1,10 +1,31 @@
 import { DateTime } from "luxon";
+import { isbot } from "isbot";
 import { clickhouse } from "../../db/clickhouse/clickhouse.js";
 import { getLocation } from "../../db/geolocation/geolocation.js";
 import { createServiceLogger } from "../../lib/logger/logger.js";
 import { getDeviceType } from "../../utils.js";
 import { getChannel } from "./getChannel.js";
 import { clearSelfReferrer, getAllUrlParams, TotalTrackingPayload } from "./utils.js";
+
+/**
+ * Extract bot/crawler name from User-Agent string.
+ * Only called when isbot() confirms it's a bot.
+ */
+function getBotName(userAgent: string): string {
+  if (!userAgent || !isbot(userAgent)) return "";
+
+  // Match tokens ending in bot/spider/crawler, plus well-known non-standard names
+  const match = userAgent.match(
+    /(\w+bot|\w+spider|\w+crawler|facebookexternalhit|Slurp|ia_archiver|anthropic-ai|Google-Extended|ChatGPT-User)\b/i
+  );
+  if (match) return match[1];
+
+  // Fallback: extract first product token (e.g. "python-requests/2.28" → "python-requests")
+  const product = userAgent.match(/^([\w.\-]+)/);
+  if (product) return product[1].substring(0, 64);
+
+  return "bot";
+}
 
 type TotalPayload = TotalTrackingPayload & {
   sessionId: string;
@@ -109,7 +130,7 @@ class PageviewQueue {
         asn_type: dataForIp?.asn?.type || "",
         asn_abuse_score: dataForIp?.asn?.abuseScore ?? null,
         vpn: dataForIp?.vpn || "",
-        crawler: dataForIp?.crawler || "",
+        crawler: dataForIp?.crawler || getBotName(pv.ua.ua),
         datacenter: dataForIp?.datacenter || "",
         is_proxy: dataForIp?.isProxy ?? null,
         is_tor: dataForIp?.isTor ?? null,

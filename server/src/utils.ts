@@ -245,7 +245,16 @@ export const getIpAddress = (request: FastifyRequest): string => {
     return cfConnectingIp.trim();
   }
 
-  // Priority 2: X-Forwarded-For - just use the first IP
+  // Priority 2: X-Real-IP (set by reverse proxy)
+  const realIp = request.headers["x-real-ip"];
+  if (realIp && typeof realIp === "string") {
+    const ip = realIp.split(",")[0].trim();
+    if (ip && !ip.startsWith("192.168.") && !ip.startsWith("10.") && !ip.startsWith("172.")) {
+      return ip;
+    }
+  }
+
+  // Priority 3: X-Forwarded-For - just use the first IP
   const forwardedFor = request.headers["x-forwarded-for"];
   if (forwardedFor && typeof forwardedFor === "string") {
     const ips = forwardedFor
